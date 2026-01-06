@@ -7,6 +7,7 @@ import type { ControlLocation } from '@companion-app/shared/Model/Common.js'
 import LogController from '../Log/Controller.js'
 import type { DataUserConfig } from '../Data/UserConfig.js'
 import type { ServiceApi } from './ServiceApi.js'
+import type { ImportExportController } from '../ImportExport/Controller.js'
 
 const HTTP_API_SURFACE_ID = 'http'
 
@@ -33,6 +34,8 @@ export class ServiceHttpApi {
 
 	readonly #userconfigController: DataUserConfig
 
+	readonly #importExportController: ImportExportController
+
 	/**
 	 * new Api express router
 	 */
@@ -48,10 +51,17 @@ export class ServiceHttpApi {
 	 */
 	readonly #express: UIExpress
 
-	constructor(serviceApi: ServiceApi, userconfigController: DataUserConfig, express: UIExpress) {
+	constructor(
+		serviceApi: ServiceApi,
+		userconfigController: DataUserConfig,
+		express: UIExpress,
+		importExportController: ImportExportController
+	) {
 		this.#serviceApi = serviceApi
 
 		this.#userconfigController = userconfigController
+
+		this.#importExportController = importExportController
 
 		this.#express = express
 		this.#apiRouter = Express.Router()
@@ -319,6 +329,9 @@ export class ServiceHttpApi {
 
 		// surfaces
 		this.#apiRouter.post('/surfaces/rescan', this.#surfacesRescan)
+
+		// config upload
+		this.#apiRouter.post('/config/upload', Express.raw({ type: '*/*', limit: '500mb' }), this.#configUpload)
 
 		// Finally, default all unhandled to 404
 		this.#apiRouter.use((_req, res) => {
@@ -639,6 +652,31 @@ export class ServiceHttpApi {
 			} else {
 				res.send(result)
 			}
+		}
+	}
+
+	/**
+	 * Upload and import a config file
+	 */
+	#configUpload = async (req: Express.Request, res: Express.Response): Promise<void> => {
+		try {
+			if (!req.body || !Buffer.isBuffer(req.body)) {
+				res.status(400).send('Invalid request body')
+				return
+			}
+
+			this.logger.info(`Got HTTP config upload request, size: ${req.body.length} bytes`)
+
+			const result = await this.#importExportController.importConfigFromBuffer(req.body)
+
+			if (result.success) {
+				res.send('ok')
+			} else {
+				res.status(400).send(result.error || 'Import failed')
+			}
+		} catch (error) {
+			this.logger.error(`Config upload failed: ${error}`)
+			res.status(500).send(`Import failed: ${error instanceof Error ? error.message : String(error)}`)
 		}
 	}
 }

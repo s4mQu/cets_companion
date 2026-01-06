@@ -278,7 +278,8 @@ export class Registry {
 				pageStore,
 				this.instance,
 				this.ui.io,
-				this.ui.express
+				this.ui.express,
+				this.importExport
 			)
 			this.cloud = new CloudController(
 				this.#appInfo,

@@ -511,4 +511,94 @@ export class ImportExportController {
 
 		return 'ok'
 	}
+
+	/**
+	 * Import a config file directly from buffer (for HTTP API)
+	 * This performs a full reset and import with default settings
+	 */
+	async importConfigFromBuffer(data: Buffer): Promise<{ success: boolean; error?: string }> {
+		try {
+			let dataStr: string
+			try {
+				dataStr = await new Promise((resolve, reject) => {
+					zlib.gunzip(data, (err, data) => {
+						if (err) reject(err)
+						else resolve(data?.toString() || '')
+					})
+				})
+			} catch (_e) {
+				dataStr = data.toString('utf-8')
+			}
+
+			let rawObject
+			try {
+				rawObject = yaml.parse(dataStr)
+			} catch (_e) {
+				return { success: false, error: 'File is corrupted or unknown format' }
+			}
+
+			if (rawObject.version > FILE_VERSION) {
+				return { success: false, error: 'File was saved with a newer unsupported version of Companion' }
+			}
+
+			if (rawObject.type !== 'full' && rawObject.type !== 'page' && rawObject.type !== 'trigger_list') {
+				return { success: false, error: 'Unknown import type. Only full config files are supported via API' }
+			}
+
+			let importObject = upgradeImport(rawObject)
+
+			if (importObject.instances) {
+				for (const connectionConfig of Object.values(importObject.instances)) {
+					if (connectionConfig) {
+						connectionConfig.lastUpgradeIndex = connectionConfig.lastUpgradeIndex ?? -1
+					}
+				}
+			}
+
+			if (importObject.type === 'trigger_list') {
+				importObject = {
+					type: 'full',
+					version: FILE_VERSION,
+					companionBuild: importObject.companionBuild,
+					triggers: importObject.triggers,
+					triggerCollections: importObject.triggerCollections,
+					instances: importObject.instances,
+					connectionCollections: importObject.connectionCollections,
+				} satisfies ExportFullv6
+			}
+
+			if (importObject.type !== 'full') {
+				return { success: false, error: 'Only full config imports are supported via API' }
+			}
+
+			const fullImportObject: ExportFullv6 = importObject
+
+			const config: ClientImportOrResetSelection = {
+				buttons: 'reset-and-import',
+				surfaces: {
+					known: 'reset-and-import',
+					instances: 'reset-and-import',
+					remote: 'reset-and-import',
+				},
+				triggers: 'reset-and-import',
+				customVariables: 'reset-and-import',
+				expressionVariables: 'reset-and-import',
+				connections: 'reset',
+				userconfig: 'reset',
+			}
+
+			return await this.#checkOrRunImportTask('import', async () => {
+				await this.#reset(config)
+				this.#importController.importFull(fullImportObject, config)
+
+				setImmediate(() => {
+					this.#controlsController.triggers.emit('startup')
+				})
+
+				return { success: true }
+			})
+		} catch (error) {
+			return { success: false, error: error instanceof Error ? error.message : String(error) }
+		}
+	}
 }

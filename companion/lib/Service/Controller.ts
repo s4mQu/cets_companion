@@ -20,6 +20,7 @@ import type { SurfaceController } from '../Surface/Controller.js'
 import type { IPageStore } from '../Page/Store.js'
 import type { InstanceController } from '../Instance/Controller.js'
 import type { UIExpress } from '../UI/Express.js'
+import type { ImportExportController } from '../ImportExport/Controller.js'
 
 /**
  * Class that manages all of the services.
@@ -59,9 +60,10 @@ export class ServiceController {
 		pageStore: IPageStore,
 		instanceController: InstanceController,
 		io: UIHandler,
-		express: UIExpress
+		express: UIExpress,
+		importExportController: ImportExportController
 	) {
-		this.httpApi = new ServiceHttpApi(serviceApi, userconfig, express)
+		this.httpApi = new ServiceHttpApi(serviceApi, userconfig, express, importExportController)
 		this.https = new ServiceHttps(userconfig, express, io)
 		this.oscSender = oscSender
 		this.oscListener = new ServiceOscListener(serviceApi, userconfig)
